@@ -1,41 +1,70 @@
 # Open NO2 OMI OMNO2d data
 # 04/1/2017
 # Ferchu fgarciaferreyra@conae.gov.ar
+# 10/03/2017 Sol solrepresa@quimica.unlp.edu.ar
 
 # Necesario!
-library(RNetCDF)
-library(maptools)
-library(sp)
-library(raster)
-library(fields)
+source("http://bioconductor.org/biocLite.R")
+biocLite("rhdf5")
 
-# para verificar:
-#library(rgeos)
+library("rhdf5")
+library("raster")
+library("rgdal")
+library("maps")
 
-data <- open.nc("/home/octave/Documentos/Fernanda/OMINO2d/OMI-Aura_L3-OMNO2d_2016m0319_v003-2016m0825t091247.he5.nc", write=FALSE)
-dataread <- read.nc(data, unpack=TRUE)
-ColumnAmountNO2 <- var.get.nc(data, "ColumnAmountNO2") # "NO2 vertical column density" molec/cm2
-ColumnAmountNO2CloudScreened <- var.get.nc(data,"ColumnAmountNO2CloudScreened")  # "NO2 vertical column density, screened for CloudFraction < 30%" molec/cm2
-ColumnAmountNO2Trop <- var.get.nc(data,"ColumnAmountNO2Trop") # "NO2 tropospheric column density" molec/cm2
-ColumnAmountNO2TropCloudScreened <- var.get.nc(data,"ColumnAmountNO2TropCloudScreened") # "NO2 tropospheric column density, screened for CloudFraction < 30%" - molec/cm2
-Weight <- var.get.nc(data,"Weight") # "Weight Factor used for each Grid Cell" - no units
-lon <- var.get.nc(data,"lon")
-lat <- var.get.nc(data,'lat')
+# Apertura iterativa y guardar fecha #### 
 
-dim_ColumnAmountNO2 <- dim(ColumnAmountNO2) # tamaño de la matriz de datos: 1440 720
+setwd("F:\\Imagenes\\OMI\\no2\\nasa\\L3")  #seteamos directorio de imagenes
+a <- dir()
+data <- data.frame(0)
+for (i in 1:length(a)){
+  data[i] <- paste(substring(a[i],20,23), substring(a[i],25,28))
+  data[i] <- as.POSIXct(strptime(data[i], "%Y %m%d" , tz="GMT"))
+}
+
+
+# Abrir imagen - library(rhdf5) #####
+
+archivo <- h5ls(a[1]) #para ver la info del fichero
+H5close()
+
+info <- h5readAttributes(a[1],"HDFEOS/ADDITIONAL/FILE_ATTRIBUTES")
+ls(info)
+
+infoGRID <- h5readAttributes(a[1],"/HDFEOS/GRIDS/ColumnAmountNO2")
+ls(infoGRID)
+
+infoNO2 <- h5readAttributes(a[1],"/HDFEOS/GRIDS/ColumnAmountNO2/Data Fields/ColumnAmountNO2")
+ls(infoNO2)
+
+
+infoNO2$MissingValue #missing value
+ 
+ColumnAmountNO2 <- h5read(a[1],"/HDFEOS/GRIDS/ColumnAmountNO2/Data Fields/ColumnAmountNO2") # "NO2 vertical column density" molec/cm2
+ColumnAmountNO2CloudScreened <- h5read(a[1],"/HDFEOS/GRIDS/ColumnAmountNO2/Data Fields/ColumnAmountNO2CloudScreened")  # "NO2 vertical column density, screened for CloudFraction < 30%" molec/cm2
+ColumnAmountNO2Trop <- h5read(a[1],"/HDFEOS/GRIDS/ColumnAmountNO2/Data Fields/ColumnAmountNO2Trop") # "NO2 tropospheric column density" molec/cm2
+ColumnAmountNO2TropCloudScreened <- h5read(a[1],"/HDFEOS/GRIDS/ColumnAmountNO2/Data Fields/ColumnAmountNO2TropCloudScreened") # "NO2 tropospheric column density, screened for CloudFraction < 30%" - molec/cm2
+Weight <- h5read(a[1],"/HDFEOS/GRIDS/ColumnAmountNO2/Data Fields/Weight") # "Weight Factor used for each Grid Cell" - no units
+dim_ColumnAmountNO2 <- dim(ColumnAmountNO2)
+# tamaño de la matriz de datos: 1440 720
+
+
 #missing_value <- att.get.nc(data,"ColumnAmountNO2","missing_value")
 
-#Lectura de shapefiles:
-shape_world <- readShapePoly("/home/octave/Documentos/Fernanda/Vectores/WorldCountries.shp")
+# VISUALIZACION ############
 
-xmin <- min(lon)
-xmax <- max(lon)
-ymin <- min(lat)
-ymax <- max(lat)
-nx <- xmax*2/length(lon)
-ny <- ymax*2/length(lat)
-coords_world <- raster(xmn=xmin, xmx=xmax, ymn=ymin, ymx=ymax, ncols=length(lon), nrows=length(lat))
+# Contruccion de Mapa ##
+mundoSHAPE <- "E:\\DOC\\SIGA\\DATOS\\limites\\WORLD\\TM_WORLD_BORDERS-0.3.shp"
+shape_world <- readShapePoly(mundoSHAPE)
 
+xmin <- -180
+xmax <- 180
+ymin <- -90
+ymax <- 90
+coords_world <- raster(xmn=xmin, xmx=xmax, ymn=ymin, ymx=ymax, ncols=infoGRID$NumberOfLongitudesInGrid, nrows=infoGRID$NumberOfLatitudesInGrid)
+#list(coords_world)
+
+# Visualizar datos ####
 hist_NO2 <- hist(ColumnAmountNO2, breaks=100, xlab="molec/cm2")
 hist_NO2CloudScreened <- hist(ColumnAmountNO2CloudScreened, breaks=100, xlab="molec/cm2")
 hist_NO2Trop <- hist(ColumnAmountNO2Trop, breaks=100, xlab="molec/cm2")
