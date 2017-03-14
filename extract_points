@@ -1,0 +1,77 @@
+# Autora: Represa, Soledad
+# Fecha: 10/03/2017
+
+# Extraer información de conjunto de imagenes OMI en 5 puntos de validación
+
+source("http://bioconductor.org/biocLite.R")
+biocLite("rhdf5")
+
+library("rhdf5")
+library("raster")
+library("rgdal")
+library("maps")
+
+setwd("F:\\Imagenes\\OMI\\no2\\nasa\\L3")  #seteamos directorio de imagenes
+a <- dir()
+
+infoGRID <- h5readAttributes(a[1],"/HDFEOS/GRIDS/ColumnAmountNO2") #para datos OMI
+dim_OMI <- dim(h5read(a[1],"/HDFEOS/GRIDS/ColumnAmountNO2/Data Fields/ColumnAmountNO2"))
+H5close()
+
+#Coordenadas imagen OMI
+coords_world <- raster(xmn=-180, xmx=180, ymn=-90, ymx=90, 
+                       ncols=infoGRID$NumberOfLongitudesInGrid, 
+                       nrows=infoGRID$NumberOfLatitudesInGrid)
+
+#Coordenadas de puntos de muestreo 
+bb <- c( -62.27,-38.79 ); cor <- c(-58.391552893462, -34.599564343343)
+cen <- c(-58.4320717652753, -34.6066080998154) ; lb <-c(-58.3663735070165,-34.6252584813295)
+ds <-  c(-58.32931666666667, -34.666969) 
+points <- as.data.frame(rbind(bb, cor, cen, lb, ds))
+names(points) <- c("Longitud", "Latitud")
+
+#Creo variables internas
+date <- data.frame(0)
+Salida <- data.frame(0)
+datos_OMI <- matrix(nrow=1, ncol=25)
+
+for (i in 1:length(a)){
+  date[i] <- paste(substring(a[i],20,23), substring(a[i],25,28))
+  date[i] <- as.POSIXct(strptime(date[i], "%Y %m%d" , tz="GMT"))
+  
+  archivo <- h5ls(a[i])
+  H5close()
+  
+  ColNO2 <- h5read(a[i],"/HDFEOS/GRIDS/ColumnAmountNO2/Data Fields/ColumnAmountNO2") 
+  ColNO2Cloud <- h5read(a[i],"/HDFEOS/GRIDS/ColumnAmountNO2/Data Fields/ColumnAmountNO2CloudScreened")  
+  ColNO2Trop <- h5read(a[i],"/HDFEOS/GRIDS/ColumnAmountNO2/Data Fields/ColumnAmountNO2Trop") 
+  ColNO2TropCloud <- h5read(a[i],"/HDFEOS/GRIDS/ColumnAmountNO2/Data Fields/ColumnAmountNO2TropCloudScreened") 
+  Weight <- h5read(a[i],"/HDFEOS/GRIDS/ColumnAmountNO2/Data Fields/Weight") 
+
+  OMIraster <- setValues(coords_world, c(ColNO2[,dim_OMI[2]:1]))
+  NO2 <- extract(OMIraster, points)
+  
+  OMIraster <- setValues(coords_world, c(ColNO2Cloud[,dim_OMI[2]:1])) 
+  NO2Cloud <- extract(OMIraster, points)
+  
+  OMIraster <- setValues(coords_world, c(ColNO2Trop[,dim_OMI[2]:1])) 
+  NO2Trop <- extract(OMIraster, points)
+  
+  OMIraster <- setValues(coords_world, c(ColNO2TropCloud[,dim_OMI[2]:1]) ) 
+  NO2TropCloud <- extract(OMIraster, points)
+  
+  OMIraster <- setValues(coords_world, c(Weight[,dim_OMI[2]:1]))
+  We <- extract(OMIraster, points)
+  
+  Salida <- c(NO2, NO2Cloud,NO2Trop,NO2TropCloud,We)
+  datos_OMI <- rbind(Salida, datos_OMI)
+}
+
+colnames(datos_OMI) <- c("NO2_bb", "NO2_cor", "NO2_cen", "NO2_lb", "NO2_ds",
+                  "NO2Cloud_bb", "NO2Cloud_cor", "NO2Cloud_cen", "NO2Cloud_lb", "NO2Cloud_ds",
+                  "NO2Trop_bb", "NO2Trop_cor", "NO2Trop_cen", "NO2Trop_lb", "NO2Trop_ds",
+                  "NO2TropCloud_bb", "NO2TropCloud_cor", "NO2TropCloud_cen", "NO2TropCloud_lb", "NO2TropCloud_ds",
+                  "Weight_bb", "Weight_cor", "Weight_cen", "Weight_lb", "Weight_ds")
+
+setwd("F:\\Imagenes\\OMI\\no2")
+write.csv(datos_OMI, file="datosOMI.csv", row.names=FALSE, col.names=TRUE, na="NA")
